@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>PavePredict Location</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    input,
+    button {
+      padding: 12px;
+      font-size: 16px;
+      margin: 5px 0;
+    }
+
+    #status {
+      margin-top: 20px;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>PavePredict</h1>
+
+  <h2>Motorcycle Location Sender</h2>
+
+  <p>
+    Keep this page open during the test.
+  </p>
+
+  <label>
+    Session ID
+  </label>
+
+  <br>
+
+  <input
+    id="sessionId"
+    value="ride-001"
+  >
+
+  <br>
+
+  <button onclick="startLocation()">
+    Start Location
+  </button>
+
+  <button onclick="stopLocation()">
+    Stop
+  </button>
+
+  <div id="status">
+    Location stopped.
+  </div>
+
+
+<script>
+
+const SUPABASE_URL =
+  "https://YOUR_PROJECT_ID.supabase.co";
+
+const SUPABASE_KEY =
+  "YOUR_PUBLISHABLE_KEY";
+
+
+let watchId = null;
+
+let lastUploadTime = 0;
+
+
+const statusElement =
+  document.getElementById(
+    "status"
+  );
+
+
+async function uploadLocation(
+  position
+) {
+
+  const now = Date.now();
+
+
+  // Send at most once every 2 seconds.
+  if (
+    now - lastUploadTime
+    < 2000
+  ) {
+    return;
+  }
+
+
+  lastUploadTime = now;
+
+
+  const sessionId =
+    document
+      .getElementById(
+        "sessionId"
+      )
+      .value
+      .trim();
+
+
+  if (!sessionId) {
+
+    statusElement.textContent =
+      "Please enter a session ID.";
+
+    return;
+  }
+
+
+  const data = {
+
+    session_id:
+      sessionId,
+
+    latitude:
+      position.coords.latitude,
+
+    longitude:
+      position.coords.longitude,
+
+    accuracy_m:
+      position.coords.accuracy,
+
+    speed_mps:
+      position.coords.speed
+
+  };
+
+
+  try {
+
+    const response =
+      await fetch(
+
+        SUPABASE_URL
+        + "/rest/v1/"
+        + "phone_locations",
+
+        {
+
+          method: "POST",
+
+          headers: {
+
+            "apikey":
+              SUPABASE_KEY,
+
+            "Content-Type":
+              "application/json",
+
+            "Prefer":
+              "return=minimal"
+
+          },
+
+          body:
+            JSON.stringify(data)
+
+        }
+
+      );
+
+
+    if (!response.ok) {
+
+      const errorText =
+        await response.text();
+
+      throw new Error(
+        errorText
+      );
+    }
+
+
+    statusElement.textContent =
+
+      "LOCATION ACTIVE\n\n"
+
+      + "Session: "
+      + sessionId
+      + "\n"
+
+      + "Latitude: "
+      + data.latitude
+      + "\n"
+
+      + "Longitude: "
+      + data.longitude
+      + "\n"
+
+      + "Accuracy: "
+      + data.accuracy_m
+      + " m\n"
+
+      + "Speed: "
+      + (
+          data.speed_mps
+          ?? "Unavailable"
+        );
+
+
+  }
+  catch (error) {
+
+    statusElement.textContent =
+      "Upload failed:\n"
+      + error;
+
+  }
+
+}
+
+
+function locationError(
+  error
+) {
+
+  statusElement.textContent =
+
+    "Location error:\n"
+    + error.message;
+
+}
+
+
+function startLocation() {
+
+  if (
+    !navigator.geolocation
+  ) {
+
+    statusElement.textContent =
+      "Geolocation is not supported.";
+
+    return;
+  }
+
+
+  statusElement.textContent =
+    "Waiting for GPS...";
+
+
+  watchId =
+    navigator.geolocation
+      .watchPosition(
+
+        uploadLocation,
+
+        locationError,
+
+        {
+
+          enableHighAccuracy:
+            true,
+
+          maximumAge:
+            1000,
+
+          timeout:
+            10000
+
+        }
+
+      );
+
+}
+
+
+function stopLocation() {
+
+  if (
+    watchId !== null
+  ) {
+
+    navigator.geolocation
+      .clearWatch(
+        watchId
+      );
+
+    watchId = null;
+
+  }
+
+
+  statusElement.textContent =
+    "Location stopped.";
+
+}
+
+</script>
+
+</body>
+</html>
