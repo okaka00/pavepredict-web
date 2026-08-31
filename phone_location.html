@@ -2,310 +2,243 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <title>PavePredict Location</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PavePredict Dashboard</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-      padding: 20px;
-    }
-
-    input,
-    button {
-      padding: 12px;
-      font-size: 16px;
-      margin: 5px 0;
-    }
-
-    #status {
-      margin-top: 20px;
-      white-space: pre-line;
-    }
+    :root { --blue:#1769e0; --navy:#11233f; --green:#138a55; --red:#c53b3b; --bg:#f3f6fa; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#172033; font-family:Arial,sans-serif; }
+    .app { width:min(720px,100%); margin:auto; padding:18px; }
+    header { margin-bottom:16px; }
+    h1 { margin:0 0 4px; color:var(--navy); }
+    .subtitle { margin:0; color:#657087; }
+    .session { background:white; padding:14px; border-radius:12px; box-shadow:0 2px 10px #18264112; }
+    label { display:block; margin-bottom:6px; font-weight:bold; }
+    input { width:100%; padding:12px; border:1px solid #cbd3df; border-radius:8px; font-size:16px; }
+    .tabs { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:14px 0; }
+    button { padding:12px; border:0; border-radius:8px; font-size:15px; font-weight:bold; cursor:pointer; }
+    .tab-button { background:#dfe6f0; color:#34415a; }
+    .tab-button.active { background:var(--blue); color:white; }
+    .panel { display:none; }
+    .panel.active { display:block; }
+    .card { background:white; padding:16px; border-radius:12px; box-shadow:0 2px 10px #18264112; margin-bottom:12px; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .primary { background:var(--green); color:white; }
+    .secondary { background:#dfe6f0; color:#27354c; }
+    .danger { background:var(--red); color:white; }
+    #status { margin-top:14px; padding:12px; border-radius:8px; background:#eef3f8; white-space:pre-line; line-height:1.45; }
+    .gallery-header { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; }
+    .gallery-header h2 { margin:0; }
+    #galleryStatus { color:#657087; margin:8px 0 12px; }
+    .event-image { width:100%; max-height:360px; object-fit:cover; display:block; border-radius:9px; background:#e5e9ef; }
+    .event-top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:12px 0 8px; }
+    .badge { padding:5px 8px; border-radius:20px; background:#e6f4ec; color:#0d7043; font-size:12px; font-weight:bold; }
+    .confidence { font-weight:bold; color:var(--blue); }
+    .meta { display:grid; gap:5px; color:#4f5b70; font-size:14px; }
+    .map-link { color:var(--blue); font-weight:bold; text-decoration:none; }
+    .empty { text-align:center; padding:28px 15px; color:#657087; }
+    @media (max-width:480px) { .app { padding:12px; } .event-image { max-height:280px; } }
   </style>
 </head>
-
 <body>
+  <main class="app">
+    <header>
+      <h1>PavePredict</h1>
+      <p class="subtitle">Motorcycle test dashboard</p>
+    </header>
 
-  <h1>PavePredict</h1>
+    <section class="session">
+      <label for="sessionId">Session ID</label>
+      <input id="sessionId" value="ride-001" autocomplete="off">
+    </section>
 
-  <h2>Motorcycle Location Sender</h2>
+    <nav class="tabs">
+      <button id="locationTabButton" class="tab-button active" onclick="showTab('location')">Location</button>
+      <button id="galleryTabButton" class="tab-button" onclick="showTab('gallery')">Detected Potholes</button>
+    </nav>
 
-  <p>
-    Keep this page open during the test.
-  </p>
+    <section id="locationPanel" class="panel active">
+      <div class="card">
+        <h2>Phone Location</h2>
+        <p>Keep this page open during the motorcycle test.</p>
+        <div class="actions">
+          <button class="primary" onclick="startLocation()">Start Location</button>
+          <button class="danger" onclick="stopLocation()">Stop</button>
+        </div>
+        <div id="status">Location stopped.</div>
+      </div>
+    </section>
 
-  <label>
-    Session ID
-  </label>
+    <section id="galleryPanel" class="panel">
+      <div class="gallery-header">
+        <h2>Saved Detections</h2>
+        <button class="secondary" onclick="loadEvents()">Refresh</button>
+      </div>
+      <div id="galleryStatus">Open this tab to load detections.</div>
+      <div id="gallery"></div>
+    </section>
+  </main>
 
-  <br>
+  <script>
+    const SUPABASE_URL = "https://faraweaazrwahtmeqjsr.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_iDcXHMeTcAd1QBG0-C4XyQ_UdUgqFbN";
+    let watchId = null;
+    let lastUploadTime = 0;
+    let galleryTimer = null;
 
-  <input
-    id="sessionId"
-    value="ride-001"
-  >
+    const statusElement = document.getElementById("status");
+    const sessionElement = document.getElementById("sessionId");
 
-  <br>
+    sessionElement.value = localStorage.getItem("pavepredict_session") || "ride-001";
+    sessionElement.addEventListener("change", () => {
+      localStorage.setItem("pavepredict_session", sessionElement.value.trim());
+      if (document.getElementById("galleryPanel").classList.contains("active")) loadEvents();
+    });
 
-  <button onclick="startLocation()">
-    Start Location
-  </button>
-
-  <button onclick="stopLocation()">
-    Stop
-  </button>
-
-  <div id="status">
-    Location stopped.
-  </div>
-
-
-<script>
-
-const SUPABASE_URL =
-  "https://faraweaazrwahtmeqjsr.supabase.co";
-
-const SUPABASE_KEY =
-  "sb_publishable_iDcXHMeTcAd1QBG0-C4XyQ_UdUgqFbN";
-
-
-let watchId = null;
-
-let lastUploadTime = 0;
-
-
-const statusElement =
-  document.getElementById(
-    "status"
-  );
-
-
-async function uploadLocation(
-  position
-) {
-
-  const now = Date.now();
-
-
-  // Send at most once every 2 seconds.
-  if (
-    now - lastUploadTime
-    < 2000
-  ) {
-    return;
-  }
-
-
-  lastUploadTime = now;
-
-
-  const sessionId =
-    document
-      .getElementById(
-        "sessionId"
-      )
-      .value
-      .trim();
-
-
-  if (!sessionId) {
-
-    statusElement.textContent =
-      "Please enter a session ID.";
-
-    return;
-  }
-
-
-  const data = {
-
-    session_id:
-      sessionId,
-
-    latitude:
-      position.coords.latitude,
-
-    longitude:
-      position.coords.longitude,
-
-    accuracy_m:
-      position.coords.accuracy,
-
-    speed_mps:
-      position.coords.speed
-
-  };
-
-
-  try {
-
-    const response =
-      await fetch(
-
-        SUPABASE_URL
-        + "/rest/v1/"
-        + "phone_locations",
-
-        {
-
-          method: "POST",
-
-          headers: {
-
-            "apikey":
-              SUPABASE_KEY,
-
-            "Content-Type":
-              "application/json",
-
-            "Prefer":
-              "return=minimal"
-
-          },
-
-          body:
-            JSON.stringify(data)
-
-        }
-
-      );
-
-
-    if (!response.ok) {
-
-      const errorText =
-        await response.text();
-
-      throw new Error(
-        errorText
-      );
+    function getSessionId() {
+      const sessionId = sessionElement.value.trim();
+      if (!sessionId) throw new Error("Please enter a session ID.");
+      localStorage.setItem("pavepredict_session", sessionId);
+      return sessionId;
     }
 
+    function showTab(name) {
+      const galleryActive = name === "gallery";
+      document.getElementById("locationPanel").classList.toggle("active", !galleryActive);
+      document.getElementById("galleryPanel").classList.toggle("active", galleryActive);
+      document.getElementById("locationTabButton").classList.toggle("active", !galleryActive);
+      document.getElementById("galleryTabButton").classList.toggle("active", galleryActive);
 
-    statusElement.textContent =
+      clearInterval(galleryTimer);
+      galleryTimer = null;
+      if (galleryActive) {
+        loadEvents();
+        galleryTimer = setInterval(loadEvents, 5000);
+      }
+    }
 
-      "LOCATION ACTIVE\n\n"
+    async function uploadLocation(position) {
+      const now = Date.now();
+      if (now - lastUploadTime < 2000) return;
+      lastUploadTime = now;
 
-      + "Session: "
-      + sessionId
-      + "\n"
+      let sessionId;
+      try { sessionId = getSessionId(); }
+      catch (error) { statusElement.textContent = error.message; return; }
 
-      + "Latitude: "
-      + data.latitude
-      + "\n"
+      const data = {
+        session_id: sessionId,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy_m: position.coords.accuracy,
+        speed_mps: position.coords.speed
+      };
 
-      + "Longitude: "
-      + data.longitude
-      + "\n"
+      try {
+        const response = await fetch(SUPABASE_URL + "/rest/v1/phone_locations", {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_KEY,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal"
+          },
+          body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error(await response.text());
 
-      + "Accuracy: "
-      + data.accuracy_m
-      + " m\n"
+        statusElement.textContent =
+          "LOCATION ACTIVE\n\nSession: " + sessionId +
+          "\nLatitude: " + data.latitude.toFixed(6) +
+          "\nLongitude: " + data.longitude.toFixed(6) +
+          "\nAccuracy: " + Math.round(data.accuracy_m) + " m" +
+          "\nSpeed: " + (data.speed_mps ?? "Unavailable");
+      } catch (error) {
+        statusElement.textContent = "Upload failed:\n" + error.message;
+      }
+    }
 
-      + "Speed: "
-      + (
-          data.speed_mps
-          ?? "Unavailable"
-        );
+    function locationError(error) {
+      statusElement.textContent = "Location error:\n" + error.message;
+    }
 
+    function startLocation() {
+      if (!navigator.geolocation) {
+        statusElement.textContent = "Geolocation is not supported.";
+        return;
+      }
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      statusElement.textContent = "Waiting for GPS...";
+      watchId = navigator.geolocation.watchPosition(uploadLocation, locationError, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000
+      });
+    }
 
-  }
-  catch (error) {
+    function stopLocation() {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      statusElement.textContent = "Location stopped.";
+    }
 
-    statusElement.textContent =
-      "Upload failed:\n"
-      + error;
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>'"]/g, character => ({
+        "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;"
+      })[character]);
+    }
 
-  }
+    function renderEvent(event) {
+      const confidence = event.confidence == null ? "Unavailable" : (Number(event.confidence) * 100).toFixed(1) + "%";
+      const time = event.detected_at ? new Date(event.detected_at).toLocaleString() : "Unknown time";
+      const hasLocation = event.latitude != null && event.longitude != null;
+      const mapUrl = hasLocation
+        ? "https://www.google.com/maps?q=" + encodeURIComponent(event.latitude + "," + event.longitude)
+        : "";
 
-}
+      return `<article class="card">
+        <img class="event-image" src="${escapeHtml(event.image_url)}" alt="Detected pothole" loading="lazy"
+             onerror="this.alt='Image unavailable'; this.removeAttribute('src')">
+        <div class="event-top">
+          <span class="badge">${escapeHtml(event.status || "DETECTED")}</span>
+          <span class="confidence">${confidence}</span>
+        </div>
+        <div class="meta">
+          <span>${escapeHtml(time)}</span>
+          <span>Session: ${escapeHtml(event.session_id)}</span>
+          ${hasLocation ? `<a class="map-link" href="${mapUrl}" target="_blank" rel="noopener">Open location in Google Maps</a>` : "<span>Location unavailable</span>"}
+        </div>
+      </article>`;
+    }
 
+    async function loadEvents() {
+      const gallery = document.getElementById("gallery");
+      const galleryStatus = document.getElementById("galleryStatus");
+      let sessionId;
+      try { sessionId = getSessionId(); }
+      catch (error) { galleryStatus.textContent = error.message; return; }
 
-function locationError(
-  error
-) {
+      galleryStatus.textContent = "Loading detections...";
+      const fields = "event_id,session_id,status,detected_at,confidence,latitude,longitude,location_accuracy_m,image_url,model_name";
+      const url = SUPABASE_URL + "/rest/v1/pothole_events"
+        + "?select=" + fields
+        + "&session_id=eq." + encodeURIComponent(sessionId)
+        + "&order=detected_at.desc&limit=30";
 
-  statusElement.textContent =
+      try {
+        const response = await fetch(url, { headers: { apikey: SUPABASE_KEY } });
+        if (!response.ok) throw new Error(await response.text());
+        const events = await response.json();
 
-    "Location error:\n"
-    + error.message;
-
-}
-
-
-function startLocation() {
-
-  if (
-    !navigator.geolocation
-  ) {
-
-    statusElement.textContent =
-      "Geolocation is not supported.";
-
-    return;
-  }
-
-
-  statusElement.textContent =
-    "Waiting for GPS...";
-
-
-  watchId =
-    navigator.geolocation
-      .watchPosition(
-
-        uploadLocation,
-
-        locationError,
-
-        {
-
-          enableHighAccuracy:
-            true,
-
-          maximumAge:
-            1000,
-
-          timeout:
-            10000
-
-        }
-
-      );
-
-}
-
-
-function stopLocation() {
-
-  if (
-    watchId !== null
-  ) {
-
-    navigator.geolocation
-      .clearWatch(
-        watchId
-      );
-
-    watchId = null;
-
-  }
-
-
-  statusElement.textContent =
-    "Location stopped.";
-
-}
-
-</script>
-
+        galleryStatus.textContent = events.length
+          ? events.length + " detection(s) · refreshes every 5 seconds"
+          : "No detections saved for " + sessionId + ".";
+        gallery.innerHTML = events.length
+          ? events.map(renderEvent).join("")
+          : '<div class="card empty">Show a pothole to the camera, then refresh this tab.</div>';
+      } catch (error) {
+        galleryStatus.textContent = "Could not load detections: " + error.message;
+      }
+    }
+  </script>
 </body>
 </html>
